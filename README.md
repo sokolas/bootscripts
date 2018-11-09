@@ -1,78 +1,90 @@
 # bootscripts
 UEFI Linux boot scripts and instructions
 
-from https://github.com/slytomcat/UEFI-Boot/wiki
-### Combine ESP and boot in one partition. ###
-Instead of repetitive copying/removing of kernels and initrds to/from EFS let's force the system to perform all such action over kernels/initrds directly within the ESP partition. Let's make /boot partition on ESP. 
-This idea is developed in the UEFI-Boot project.
-> The only one small disadvantage of keeping kernels on FAT is that FAT doesn't support links and re-installation of kernel may fail because of this. If you run into such problem just remove kernel and install it back (instead of re-installation).
+Источник: https://github.com/slytomcat/UEFI-Boot/wiki
+### Объединение ESP и boot в один раздел. ###
+Вместо того, чтобы руками копировать/удалять ядра и initrd, можно заставить систему делать это автоматически. Для начала перенесем /boot на ESP-раздел. 
+Эта идея - часть проекта UEFI-Boot.
+> Есть один недостаток хранения ядер на ESP - там используется FAT, в которой не поддерживаются симлинки. Если при переустановке (re-installation) ядра симлинк не создается, нужно удалить и снова установить ядро.
 
 ## UEFI-Boot solution ##
-> UEFI-Boot primary designed for Ubuntu distribution. Note that some distribution related things have to be changed to implement this solution on other Linux distributions.  
+> UEFI-Boot в основном предназначено для Ubuntu. Для других дистрибутивов, возможно, понадобится поменять какие-то дистрибутивозависимые настройки.
 
-First we need to move all kernel's/ staff to the root of ESP partition.
+Сначала перенесем ядра и все, что для них нужно, на ESP-раздел.
 
 `# mv /boot/*-generic* /boot/efi/`
 
-Dismount ESP partition.
+Отмонтируем ESP.
 
 `# umount /boot/efi`
 
-Clear /boot - it will be just a mount point for ESP partition. 
+ОЧистим /boot - теперь это будет просто директория для монтирования ESP. 
 
 `# rm -rf /boot/*`
 
-Next, we need to change the mount point of ESP partition in /etc/fstab
+Затем необходимо поменять точку монтирования ESP в /etc/fstab
 
 `# sed -i 's/\/boot\/efi/\/boot/' /etc/fstab`
 
-Finally, mount ESP into /boot
+Наконец, смонтируем ESP в /boot
 
 `# mount /boot`
 
-Now all updates of kernels and initrds will be performed directly within the ESP file system, and the in same time the UEFI has ability to access kernel and initrd without any additional drivers.
+С этого момента все апдейты ядра и initrd будут проводиться прямо на ESP, а UEFI сможет загружать их напрямую.
 
-(from https://wiki.archlinux.org/index.php/systemd-boot)
-Installing the EFI boot manager
+### Установка EFI boot manager
+(Взято с https://wiki.archlinux.org/index.php/systemd-boot)
 
-To install the systemd-boot EFI boot manager, first make sure the system has booted in UEFI mode and that UEFI variables are accessible. This can be checked by running the command `efivar --list.`
+Чтобы использовать EFI boot manager из systemd-boot, сначала нужно проверить, что система использует UEFI и UEFI-переменные доступны. Это можно сделать командой `efivar --list.`
 
-It should be noted that systemd-boot is only able to load the EFISTUB kernel from the EFI system partition (ESP). To keep the kernel updated, it is simpler and therefore recommended to mount the ESP to /boot. If the ESP is not mounted to /boot, the kernel and initramfs files must be copied onto that ESP. See EFI system partition#Alternative mount points for details.
+Нужно заметить, что systemd-boot может загружать только ядра, собранные с EFISTUB, и только с ESP раздела. Чтобы обновлять ядра автоматически, рекомендуется смонтировать ESP в /boot. Если это не так, то ядра и initramfs нужно копировать на ESP. (See https://wiki.archlinux.org/index.php/EFI_system_partition#Alternative_mount_points for details.)
 
-*esp* will be used throughout this page to denote the ESP mountpoint, i.e. `/boot`.
+Точка монтирования ESP раздела далее будет обозначена как *esp*, в нашем случае это `/boot`.
 
-With the ESP mounted to esp, use bootctl(1) to install systemd-boot into the EFI system partition by running:
+Используйте bootctl(1), чтобы установить загрузчик systemd-boot на ESP:
 
 `# bootctl --path=esp install`
 
-This will copy the systemd-boot boot loader to the EFI partition: on a x64 architecture system the two identical binaries *esp*/EFI/systemd/systemd-bootx64.efi and *esp*/EFI/BOOT/BOOTX64.EFI will be transferred to the ESP. It will then set systemd-boot as the default EFI application (default boot entry) loaded by the EFI Boot Manager. 
+Эта команда скопирует загрузчик systemd-boot на раздел EFI: на x64 два идентичных бинарника *esp*/EFI/systemd/systemd-bootx64.efi и *esp*/EFI/BOOT/BOOTX64.EFI будут записаны на ESP. Затем утилита установит загрузчик systemd-boot как опцию загрузки по умолчанию (default boot entry) 
 
-The update utility itself has a rather simple algorithm: first it removes all old Ubuntu* boot options from systemd uefi loader, then it creates back new boot options for all installed kernels. BASH script of utility is located to in /usr/bin/uefiboot-update.
+### Начальная конфигурация systemd-boot
+Настройка производится через /boot/loader. В файле /boot/loader/loader.conf содержатся общие настройки (таймаут и т.п.), а сами пункты меню загрузки - в файлах в /boot/loader/entries. Подробнее про настройку можно почитать тут https://wiki.archlinux.org/index.php/systemd-boot#Loader_configuration
 
-The utility has configuration file /etc/uefiboot.conf. It provides ability to specify the root partition reference, kernel boot parameters, and kernel suffix (suffix is required for signed kernels in case of SecureBoot activation). When config parameters are not set then utility:
-- takes the root reference and subvolume name/id (for btrfs) from the /etc/fstab file,
-- set kernel boot parameters to 'ro quiet' and kernel suffix as empty string.
-Another way to change uefiboot-update behavior - pass necessary parameters via command line options (see readme file for details)      
+### Скрипт обновления
+(взято с https://help.ubuntu.ru/wiki/uefiboot)
 
-The last question that we have to solve - to update UEFI boot options every time when a new kernel comes with update or when an old kernel is removed. It can be easily organized via kernel triggers (the same way as the GRUB update script is initialized).
-Triggering of utility is organized via links in /etc/kernel/postinst.d and /etc/kernel/postrm.d.
+Собственно скрипт утилиты располагается в `/usr/bin/uefiboot-update`
 
-`# ln -s /usr/bin/uefiboot-update /etc/kernel/postinst.d/uefiboot-update`
+Код достаточно примитивный: после определения необходимых параметров, сначала мы вычищаем все пункты меню с названиями вида «Ubuntu….», а затем добавляем в порядке возрастания версии ядра новые пункты меню. Все это делается через создание/удаление файлов в /boot/loader/entries.
 
-`# ln -s /usr/bin/uefiboot-update /etc/kernel/postrm.d/uefiboot-update`
+В скрипте предусмотрена инициализация переменных настройки ROOT, OPTINS и ROOTFLAGS, которая обеспечивает работу утилиты без дополнительных настроек в большинстве стандартных ситуаций. Но, например, для настройки загрузки системы в режиме SecureBoot нужно будет обязательно указать значение переменной K_SUFFIX в файле `/etc/uefiboot.conf`.
 
-As we excluded Shim and GRUB from the booting chain, now we can (and have to) remove them from the system. os-prober (a component of GRUB that searches for other OS installations) is also not required any more. 
+### Инициализация синхронизации пунктов загрузки
+
+Самый простой способ инициализировать синхронизацию — воспользоваться теми же средствами, которыми пользуется grub для обновление своей конфигурации.
+
+Ядро — это довольно важный компонент системы и на его установку/удаление завязано немало процессов. Для того, чтобы упростить процесс взаимодействия с процессом изменения версий ядер были предусмотрены триггеры ядра — это полная аналогия скриптов DEB-пакета: пред/постинсталляция и пред/постудаление, но лежат они в соответствующих папках /etc/kernel,а не в deb-пакете ядра. Таким образом, любое приложение, которому надо прореагировать на появление нового или удаление старого ядра могут сделать символьные ссылки на свои утилиты из соответствующих каталогов или просто разместить там свои скрипты (собственно именно так и поступает grub). Скрипты эти будут автоматически вызываться при наступлении событий связанных установкой или удалением ядер.
+
+Нас будут интересовать каталоги /etc/kernel/postinst.d и /etc/kernel/postrm.d, именно в них мы создадим символьные ссылки на нашу утилиту.
+
+`# ln -s /usr/bin/uefiboot-update /etc/kernel/postinst.d/uefiboot-update
+# ln -s /usr/bin/uefiboot-update /etc/kernel/postrm.d/uefiboot-update`
+
+Теперь пункты загрузки UEFI будут автоматически обновляться после установки нового ядра или после удаления одного из ранее установленных.
+Подчистим систему
+
+Т. к. мы настроили все для загрузки без GRUB/Shim, то необходимо вычистить все, что связано с этими загрузчиками из системы (при обновлении GRUB будет создавать свою запись в пунктах меню UEFI):
 
 `# apt-get purge grub* shim os-prober`
 
-Additionally we have to instruct the system do not install recommended package as kernel has GRUB in recommends.
+Но оказывается, этого не всегда достаточно. Любое ядро в репозитории Ubuntu имеет grub в зависимостях (зависимость типа рекомендованные — recommends) и вот, в некоторых случаях, grub пытается установится вместе с ядром (причем ставится почему-то grub-pc). Чтобы этого не происходило, нужно apt дать четкую и постоянную инструкцию не ставить рекомендованные.
+
+Сделать это можно, записав значение APT::Install-Recommends "false"; в файл (новый) /etc/apt/apt.conf.d/zz-no-recommends:
 
 `# echo 'APT::Install-Recommends "false";' > /etc/apt/apt.conf.d/zz-no-recommends`
 
-Finally, we have to trigger the utility manually to prepare UEFI for start the system next time.
+### Финальная настройка
 
-`# uefiboot-update`   
+Теперь осталось запустить утилиту обновления пунктов меню загрузки
 
-Don't forget to adjust the UEFI boot timeout (the default value can be 5-10 seconds):
-
-`# efibootmgr -t0`
+`# uefiboot-update`
