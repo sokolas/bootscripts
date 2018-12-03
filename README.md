@@ -68,7 +68,7 @@ UEFI Linux boot scripts and instructions
 Нас будут интересовать каталоги /etc/kernel/postinst.d и /etc/kernel/postrm.d, именно в них мы создадим символьные ссылки на нашу утилиту.
 
 `# ln -s /usr/bin/uefiboot-update /etc/kernel/postinst.d/uefiboot-update
-# ln -s /usr/bin/uefiboot-update /etc/kernel/postrm.d/uefiboot-update`
+`# ln -s /usr/bin/uefiboot-update /etc/kernel/postrm.d/uefiboot-update`
 
 Теперь пункты загрузки UEFI будут автоматически обновляться после установки нового ядра или после удаления одного из ранее установленных.
 Подчистим систему
