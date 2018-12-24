@@ -1,5 +1,5 @@
 #!/bin/bash
-# Setup default cofiguration values 
+# Setup default configuration values 
 
 # Read root mounting line from /etc/fstab
 ROOT_LINE="$(sed -n '/^[^#]\S*\s\/\s/p' /etc/fstab)"
@@ -18,12 +18,18 @@ DISTRIB_ID="$(lsb_release -r -s) $(lsb_release -c -s)"
 EFI_DISK="/dev/sda" 
 # EFI_PARTITION=$(gdisk -l $EFI_DISK | sed -n "s/[ \t]*\([0-9]\+\).*EF00.*/\1/p")
 
-BOOT="/boot"
+BOOT="/boot/efi"
 
 # Read the config file if it exists
 if [ -e /etc/uefiboot.conf ]
 then
   source /etc/uefiboot.conf
+fi
+
+if [[ $BOOT == "/boot" ]]
+then
+  echo BOOT shouldn\'t be /boot!
+  exit 1
 fi
 
 # Read command line options
@@ -51,6 +57,9 @@ do
   esac
   shift
 done
+
+echo "Syncing kernels"
+rsync -dv --delete --include "*-generic" --exclude "*" /boot/ $BOOT
 
 echo Distrib $DISTRIB
 # Remove all old boot options from UEFI boot menu.
